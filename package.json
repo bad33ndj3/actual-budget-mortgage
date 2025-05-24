@@ -1,0 +1,21 @@
+{
+  "scripts": {
+    "run": "TS_NODE_ENABLE_SOURCE_MAPS=true ts-node -r source-map-support/register actual-mortgage-interest.ts",
+    "test": "ts-node actual-mortgage-interest.test.ts"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@actual-app/api": "^25.5.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "compilerOptions": {
+    "sourceMap": true,
+    "inlineSources": true
+  },
+  "dependencies": {
+    "source-map-support": "^0.5.21"
+  }
+}
