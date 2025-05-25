@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "run": "TS_NODE_ENABLE_SOURCE_MAPS=true ts-node -r source-map-support/register actual-mortgage-interest.ts",
-    "test": "ts-node actual-mortgage-interest.test.ts"
+    "run": "ts-node actual-mortgage-interest.ts",
+    "lint": "eslint --ext .ts . --fix"
   },
   "type": "module",
   "devDependencies": {
@@ -9,7 +9,10 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "eslint": "^8.50.0",
+    "@typescript-eslint/parser": "^6.7.1",
+    "@typescript-eslint/eslint-plugin": "^6.7.1"
   },
   "compilerOptions": {
     "sourceMap": true,
@@ -17,5 +20,24 @@
   },
   "dependencies": {
     "source-map-support": "^0.5.21"
+  },
+  "eslintConfig": {
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "ecmaVersion": 2020,
+      "sourceType": "module"
+    },
+    "plugins": [
+      "@typescript-eslint"
+    ],
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended"
+    ],
+    "rules": {
+      "semi": ["error", "always"],
+      "quotes": ["error", "double"],
+      "@typescript-eslint/no-explicit-any": "off"
+    }
   }
 }

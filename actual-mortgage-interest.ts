@@ -136,7 +136,7 @@ function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
     return { bookDate, asOfDate };
 }
 
-function logPeriodDetails(period: string, bookDateStr: string, asOf: string, balanceEuros: number, interestCents: number, monthlyRate: number): void {
+function logPeriodDetails(period: string, bookDateStr: string, asOf: string, balanceEuros: number, interestCents: number): void {
     console.log(`→ ${period}: booking date ${bookDateStr}, as of ${asOf}`);
     console.log(`→ ${period}: balance €${balanceEuros.toFixed(2)}, interest €${(interestCents / 100).toFixed(2)}`);
 }
@@ -212,9 +212,9 @@ export class MortgageInterestService {
         const balanceCents = await this.deps.getAccountBalance(this.mortgage.id, asOfDate);
         const interestCents = calculateMonthlyInterest(balanceCents, this.cfg.annualRate);
         const balanceEuros = balanceCents / 100;
-        const monthlyRate = Math.pow(1 + this.cfg.annualRate, 1 / 12) - 1;
-
-        logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents, monthlyRate);
+        // const monthlyRate = Math.pow(1 + this.cfg.annualRate, 1 / 12) - 1;
+    
+        logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents);
 
         await postInterestTransaction(this.mortgage.id, interestCents, this.category.id, importedId, bookDate, period, this.cfg.dryRun, this.deps.addTransactions);
     }
