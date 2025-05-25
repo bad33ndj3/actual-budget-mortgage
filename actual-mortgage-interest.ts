@@ -173,9 +173,6 @@ export async function mainWithDeps({
         }
 
         if (!cfg.dryRun) {
-            // 1) Update budget
-            await setBudgetAmount(period, cat.id, interestCents);
-            // 2) Post transaction
             await addTransactions(mortgage.id, [
                 {
                     date: format(bookDate, "yyyy-MM-dd"),
