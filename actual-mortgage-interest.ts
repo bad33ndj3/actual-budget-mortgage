@@ -97,16 +97,6 @@ export function calculateMonthlyInterest(balanceCents: number, annualRate: numbe
     return interestCents;
 }
 
-function toMilli(amount: number): number {
-    return Math.round(amount * 100);
-}
-
-async function initializeConnection(cfg: Config, deps: Dependencies): Promise<void> {
-    console.log("Connecting to Actual server …");
-    await deps.init({ serverURL: cfg.url, password: cfg.password, dataDir: process.env.DATA_DIR || ".cache" });
-    await deps.downloadBudget(cfg.syncId);
-}
-
 function findMortgageAccount(accounts: Account[], mortgageAccountName: string): Account {
     const mortgage = accounts.find(a => a.name === mortgageAccountName);
     if (!mortgage) throw new Error(`Account '${mortgageAccountName}' not found.`);
@@ -182,66 +172,78 @@ async function postInterestTransaction(
     console.log(`✔️ Posted ${period}`);
 }
 
-async function processPeriod(
-    cursor: Date,
-    cfg: Config,
-    mortgage: Account,
-    cat: Category,
-    getTransactions: Dependencies["getTransactions"],
-    getAccountBalance: Dependencies["getAccountBalance"],
-    addTransactions: Dependencies["addTransactions"]
-): Promise<void> {
-    const period = format(cursor, "yyyy-MM");
-    const importedId = `interest-${period}`;
-    const existing = await getTransactions(mortgage.id, format(cursor, "yyyy-MM-01"), new Date());
-    if (await hasPostedInterest(existing, importedId)) {
-        console.log(`→ ${period}: already posted, skipping.`);
-        return;
+export class MortgageInterestService {
+    private cfg: Config;
+    private deps: Dependencies;
+    private mortgage!: Account;
+    private category!: Category;
+
+    constructor(deps: Dependencies) {
+        this.cfg = loadConfig();
+        this.deps = deps;
     }
 
-    const { bookDate, asOfDate } = calculateBookingDates(cursor, cfg.bookingDay);
-    const asOf = format(asOfDate, "yyyy-MM-dd");
-    const bookDateStr = format(bookDate, "yyyy-MM-dd");
-
-    const balanceCents = await getAccountBalance(mortgage.id, asOfDate);
-    const interestCents = calculateMonthlyInterest(balanceCents, cfg.annualRate);
-    const balanceEuros = balanceCents / 100;
-    const monthlyRate = Math.pow(1 + cfg.annualRate, 1 / 12) - 1;
-
-    logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents, monthlyRate);
-
-    await postInterestTransaction(mortgage.id, interestCents, cat.id, importedId, bookDate, period, cfg.dryRun, addTransactions);
-}
-
-export async function mainWithDeps(deps: Dependencies) {
-    const cfg = loadConfig();
-    await initializeConnection(cfg, deps);
-
-    const accounts = await deps.getAccounts();
-    const mortgage = findMortgageAccount(accounts, cfg.mortgageAccount);
-
-    const categories = await deps.getCategories();
-    const cat = findInterestCategory(categories, cfg.interestCategory);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let cursor = getCursorStartDate(cfg, today);
-
-    while (!isAfter(cursor, today)) {
-        await processPeriod(cursor, cfg, mortgage, cat, deps.getTransactions, deps.getAccountBalance, deps.addTransactions);
-        cursor = addMonths(cursor, 1);
+    async initialize(): Promise<void> {
+        console.log("Connecting to Actual server …");
+        await this.deps.init({ 
+            serverURL: this.cfg.url,
+            password: this.cfg.password,
+            dataDir: process.env.DATA_DIR || ".cache",
+        });
+        await this.deps.downloadBudget(this.cfg.syncId);  
+        
+        const accounts = await this.deps.getAccounts();
+        this.mortgage = findMortgageAccount(accounts, this.cfg.mortgageAccount);
+        const categories = await this.deps.getCategories();
+        this.category = findInterestCategory(categories, this.cfg.interestCategory);
     }
 
-    try {
-        await deps.shutdown();
-    } catch (err) {
-        console.error("Error during shutdown:", err);
+    private async processPeriod(cursor: Date): Promise<void> {
+        const period = format(cursor, "yyyy-MM");
+        const importedId = `interest-${period}`;
+        const existing = await this.deps.getTransactions(this.mortgage.id, format(cursor, "yyyy-MM-01"), new Date());
+        if (await hasPostedInterest(existing, importedId)) {
+            console.log(`→ ${period}: already posted, skipping.`);
+            return;
+        }
+
+        const { bookDate, asOfDate } = calculateBookingDates(cursor, this.cfg.bookingDay);
+        const asOf = format(asOfDate, "yyyy-MM-dd");
+        const bookDateStr = format(bookDate, "yyyy-MM-dd");
+
+        const balanceCents = await this.deps.getAccountBalance(this.mortgage.id, asOfDate);
+        const interestCents = calculateMonthlyInterest(balanceCents, this.cfg.annualRate);
+        const balanceEuros = balanceCents / 100;
+        const monthlyRate = Math.pow(1 + this.cfg.annualRate, 1 / 12) - 1;
+
+        logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents, monthlyRate);
+
+        await postInterestTransaction(this.mortgage.id, interestCents, this.category.id, importedId, bookDate, period, this.cfg.dryRun, this.deps.addTransactions);
     }
-    console.log("✅ All done.");
+
+    async run(): Promise<void> {
+        await this.initialize();
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let cursor = getCursorStartDate(this.cfg, today);
+
+        while (!isAfter(cursor, today)) {
+            await this.processPeriod(cursor);
+            cursor = addMonths(cursor, 1);
+        }
+
+        try {
+            await this.deps.shutdown();
+        } catch (err) {
+            console.error("Error during shutdown:", err);
+        }
+        console.log("✅ All done.");
+    }
 }
 
 export async function main() {
-    return mainWithDeps({
+    const service = new MortgageInterestService({
         init,
         downloadBudget,
         getAccounts,
@@ -254,6 +256,7 @@ export async function main() {
         },
         shutdown,
     });
+    await service.run();
 }
 
 main().catch(err => {
