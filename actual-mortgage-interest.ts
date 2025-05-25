@@ -3,7 +3,7 @@
 // Automatically budget and book the mortgage-interest portion for each missing month.
 
 import "dotenv/config";
-import { format, parseISO, addMonths, isAfter } from "date-fns";
+import { format, parseISO, addMonths, isAfter, endOfMonth } from "date-fns";
 import {
     init,
     downloadBudget,
@@ -28,6 +28,45 @@ interface Config {
     fromDate?: string;
 }
 
+interface Account {
+    id: string;
+    name: string;
+    offbudget: boolean;
+}
+
+interface Category {
+    id: string;
+    name: string;
+}
+
+interface Transaction {
+    imported_id: string;
+    date: string;
+    amount: number;
+    account: string;
+    payee_name: string;
+    category: string;
+    cleared: boolean;
+    notes: string;
+}
+
+interface BookingDates {
+    bookDate: Date;
+    asOfDate: Date;
+}
+
+interface Dependencies {
+    init: (opts: { serverURL: string; password: string; dataDir: string }) => Promise<void>;
+    downloadBudget: (syncId: string) => Promise<void>;
+    getAccounts: () => Promise<Account[]>;
+    getCategories: () => Promise<Category[]>;
+    getTransactions: (accountId: string, startDate: string, endDate: Date) => Promise<Transaction[]>;
+    getAccountBalance: (accountId: string, asOfDate: Date) => Promise<number>;
+    setBudgetAmount: (period: string, categoryId: string, amountCents: number) => Promise<void>;
+    addTransactions: (accountId: string, transactions: Transaction[], options: { runTransfers: boolean; learnCategories: boolean }) => Promise<void>;
+    shutdown: () => Promise<void>;
+}
+
 export function loadConfig(): Config {
     const required = ["ACTUAL_URL", "ACTUAL_PASSWORD", "ACTUAL_SYNC_ID"] as const;
     for (const k of required) {
@@ -49,11 +88,10 @@ export function loadConfig(): Config {
     };
 }
 
-import { differenceInCalendarDays, endOfMonth, startOfMonth } from "date-fns";
-
 export function calculateMonthlyInterest(balanceCents: number, annualRate: number): number {
-    const dailyRate = 0.00009159; // adjusted daily rate to better match test expected value
-    const daysInMonth = 31; // fixed for test date January 2025
+    // Calculate monthly interest based on annual rate and days in month
+    const daysInMonth = 30; // Approximate average month length
+    const dailyRate = annualRate / 365;
     const monthlyRate = dailyRate * daysInMonth;
     const interestCents = Math.round(balanceCents * monthlyRate);
     return interestCents;
@@ -63,136 +101,139 @@ function toMilli(amount: number): number {
     return Math.round(amount * 100);
 }
 
-export async function mainWithDeps({
-    init,
-    downloadBudget,
-    getAccounts,
-    getCategories,
-    getTransactions,
-    getAccountBalance,
-    setBudgetAmount,
-    addTransactions,
-    shutdown,
-}: {
-    init: (opts: { serverURL: string; password: string; dataDir: string }) => Promise<void>;
-    downloadBudget: (syncId: string) => Promise<void>;
-    getAccounts: () => Promise<{ id: string; name: string; offbudget: boolean }[]>;
-    getCategories: () => Promise<{ id: string; name: string }[]>;
-    getTransactions: (accountId: string, startDate: string, endDate: Date) => Promise<any[]>;
-    getAccountBalance: (accountId: string, asOfDate: Date) => Promise<number>;
-    setBudgetAmount: (period: string, categoryId: string, amountCents: number) => Promise<void>;
-    addTransactions: (accountId: string, transactions: any[], options: { runTransfers: boolean; learnCategories: boolean }) => Promise<void>;
-    shutdown: () => Promise<void>;
-}) {
-    const cfg = loadConfig();
+async function initializeConnection(cfg: Config, deps: Dependencies): Promise<void> {
     console.log("Connecting to Actual server …");
-    await init({ serverURL: cfg.url, password: cfg.password, dataDir: process.env.DATA_DIR || ".cache" });
-    await downloadBudget(cfg.syncId);
+    await deps.init({ serverURL: cfg.url, password: cfg.password, dataDir: process.env.DATA_DIR || ".cache" });
+    await deps.downloadBudget(cfg.syncId);
+}
 
-    const accounts = await getAccounts();
-    const mortgage = accounts.find(a => a.name === cfg.mortgageAccount);
-    if (!mortgage) throw new Error(`Account '${cfg.mortgageAccount}' not found.`);
+function findMortgageAccount(accounts: Account[], mortgageAccountName: string): Account {
+    const mortgage = accounts.find(a => a.name === mortgageAccountName);
+    if (!mortgage) throw new Error(`Account '${mortgageAccountName}' not found.`);
     if (!mortgage.offbudget) console.warn("⚠️ Mortgage account is on-budget; consider marking it off-budget.");
+    return mortgage;
+}
 
-    const categories = await getCategories();
-    const cat = categories.find(c => c.name === cfg.interestCategory);
-    if (!cat) throw new Error(`Category '${cfg.interestCategory}' not found.`);
+function findInterestCategory(categories: Category[], interestCategoryName: string): Category {
+    const cat = categories.find(c => c.name === interestCategoryName);
+    if (!cat) throw new Error(`Category '${interestCategoryName}' not found.`);
+    return cat;
+}
 
-    const today = new Date();
-    // Normalize today to start of day (midnight)
-    today.setHours(0, 0, 0, 0);
-    let cursor: Date;
+function getCursorStartDate(cfg: Config, today: Date): Date {
     if (cfg.fromDate) {
-        // Parse and normalize fromDate
         const parsed = parseISO(cfg.fromDate);
         if (isNaN(parsed.getTime())) {
             throw new Error(`Invalid FROM_DATE: ${cfg.fromDate}`);
         }
-        cursor = new Date(parsed.getFullYear(), parsed.getMonth(), 1); // always first of month
+        return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
     } else {
-        cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+        return new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+}
+
+async function hasPostedInterest(transactions: Transaction[], importedId: string): Promise<boolean> {
+    return transactions.some(t => t.imported_id === importedId);
+}
+
+function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
+    const lastDay = endOfMonth(cursor).getDate();
+    const bookingDayAdjusted = Math.min(bookingDay, lastDay);
+    const bookDate = new Date(cursor.getFullYear(), cursor.getMonth(), bookingDayAdjusted);
+    const asOfDate = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    asOfDate.setDate(asOfDate.getDate() - 1);
+    if (isNaN(bookDate.getTime()) || isNaN(asOfDate.getTime())) {
+        throw new Error(`Invalid booking or asOf date for period ${format(cursor, "yyyy-MM")}`);
+    }
+    return { bookDate, asOfDate };
+}
+
+function logPeriodDetails(period: string, bookDateStr: string, asOf: string, balanceEuros: number, interestCents: number, monthlyRate: number): void {
+    console.log(`→ ${period}: booking date ${bookDateStr}, as of ${asOf}`);
+    console.log(`→ ${period}: balance €${balanceEuros.toFixed(2)}, interest €${(interestCents / 100).toFixed(2)}`);
+}
+
+async function postInterestTransaction(
+    mortgageId: string,
+    interestCents: number,
+    catId: string,
+    importedId: string,
+    bookDate: Date,
+    period: string,
+    dryRun: boolean,
+    addTransactions: Dependencies["addTransactions"]
+): Promise<void> {
+    if (dryRun) {
+        console.log(`(dry-run) Would post interest for ${period}: ${interestCents} cents`);
+        return;
+    }
+    await addTransactions(mortgageId, [
+        {
+            date: format(bookDate, "yyyy-MM-dd"),
+            amount: interestCents,
+            account: mortgageId,
+            payee_name: "Hypotheekrente",
+            category: catId,
+            cleared: true,
+            imported_id: importedId,
+            notes: `Auto-generated hypotheekrente voor ${period}`,
+        }
+    ], { runTransfers: false, learnCategories: false });
+    console.log(`✔️ Posted ${period}`);
+}
+
+async function processPeriod(
+    cursor: Date,
+    cfg: Config,
+    mortgage: Account,
+    cat: Category,
+    getTransactions: Dependencies["getTransactions"],
+    getAccountBalance: Dependencies["getAccountBalance"],
+    addTransactions: Dependencies["addTransactions"]
+): Promise<void> {
+    const period = format(cursor, "yyyy-MM");
+    const importedId = `interest-${period}`;
+    const existing = await getTransactions(mortgage.id, format(cursor, "yyyy-MM-01"), new Date());
+    if (await hasPostedInterest(existing, importedId)) {
+        console.log(`→ ${period}: already posted, skipping.`);
+        return;
     }
 
+    const { bookDate, asOfDate } = calculateBookingDates(cursor, cfg.bookingDay);
+    const asOf = format(asOfDate, "yyyy-MM-dd");
+    const bookDateStr = format(bookDate, "yyyy-MM-dd");
+
+    const balanceCents = await getAccountBalance(mortgage.id, asOfDate);
+    const interestCents = calculateMonthlyInterest(balanceCents, cfg.annualRate);
+    const balanceEuros = balanceCents / 100;
+    const monthlyRate = Math.pow(1 + cfg.annualRate, 1 / 12) - 1;
+
+    logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents, monthlyRate);
+
+    await postInterestTransaction(mortgage.id, interestCents, cat.id, importedId, bookDate, period, cfg.dryRun, addTransactions);
+}
+
+export async function mainWithDeps(deps: Dependencies) {
+    const cfg = loadConfig();
+    await initializeConnection(cfg, deps);
+
+    const accounts = await deps.getAccounts();
+    const mortgage = findMortgageAccount(accounts, cfg.mortgageAccount);
+
+    const categories = await deps.getCategories();
+    const cat = findInterestCategory(categories, cfg.interestCategory);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let cursor = getCursorStartDate(cfg, today);
+
     while (!isAfter(cursor, today)) {
-        const period = format(cursor, "yyyy-MM");
-        const importedId = `interest-${period}`;
-        // Check existing transactions
-        const existing = await getTransactions(mortgage.id, format(cursor, "yyyy-MM-01"), today);
-        if (existing.length > 0) {
-            const found = existing.find(t => t.imported_id === importedId);
-            if (found) {
-                console.log(`→ ${period}: already posted, skipping.`);
-                cursor = addMonths(cursor, 1);
-                continue;
-            }
-        }
-
-        // Determine booking date and balance
-        // Use last valid day of month if bookingDay is too high
-        const lastDay = endOfMonth(cursor).getDate();
-        const bookingDay = Math.min(cfg.bookingDay, lastDay);
-        // Use local time for bookDate and asOfDate to avoid UTC shifting issues
-        const bookDate = new Date(cursor.getFullYear(), cursor.getMonth(), bookingDay);
-        // Calculate asOfDate as last day of previous month to get balance before payment on 1st
-        const asOfDate = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-        asOfDate.setDate(asOfDate.getDate() - 1);
-        // Defensive: check for invalid dates
-        if (isNaN(bookDate.getTime()) || isNaN(asOfDate.getTime())) {
-            console.error(`DEBUG: period=${period}, cursor=${cursor.toISOString()}, bookDate=${bookDate}, asOfDate=${asOfDate}`);
-            throw new Error(`Invalid booking or asOf date for period ${period}`);
-        }
-        let interestCents = 0;
-        try {
-            // Extra validation and logging for debugging
-            if (!(bookDate instanceof Date) || isNaN(bookDate.getTime())) {
-                throw new Error(`bookDate is invalid: ${bookDate}`);
-            }
-            if (!(asOfDate instanceof Date) || isNaN(asOfDate.getTime())) {
-                throw new Error(`asOfDate is invalid: ${asOfDate}`);
-            }
-            const asOf = format(asOfDate, "yyyy-MM-dd");
-            const bookDateStr = format(bookDate, "yyyy-MM-dd");
-            if (!asOf || asOf === "Invalid Date") {
-                throw new Error(`Invalid asOf date string: ${asOf} (raw: ${asOfDate})`);
-            }
-            if (!bookDateStr || bookDateStr === "Invalid Date") {
-                throw new Error(`Invalid bookDate string: ${bookDateStr} (raw: ${bookDate})`);
-            }
-            console.log(`→ ${period}: booking date ${bookDateStr}, as of ${asOf}`);
-            // Log raw values for debugging
-            // console.debug({ period, bookDate, asOfDate, bookDateStr, asOf });
-            const balanceCents = await getAccountBalance(mortgage.id, asOfDate);
-            interestCents = calculateMonthlyInterest(balanceCents, cfg.annualRate);
-            const balanceEuros = balanceCents / 100;
-            const monthlyRate = Math.pow(1 + cfg.annualRate, 1 / 12) - 1;
-            const interest = balanceEuros * monthlyRate;
-            console.log(`→ ${period}: balance €${balanceEuros.toFixed(2)}, interest €${(interestCents / 100).toFixed(2)}`);
-        } catch (err) {
-            console.error(`DEBUG: period=${period}, bookDate=${bookDate}, asOfDate=${asOfDate}, cursor=${cursor}, bookingDay=${bookingDay}, lastDay=${lastDay}`);
-            throw err;
-        }
-
-        if (!cfg.dryRun) {
-            await addTransactions(mortgage.id, [
-                {
-                    date: format(bookDate, "yyyy-MM-dd"),
-                    amount: interestCents,
-                    account: mortgage.id,
-                    payee_name: "Hypotheekrente",
-                    category: cat.id,
-                    cleared: true,
-                    imported_id: importedId,
-                    notes: `Auto-generated hypotheekrente voor ${period}`,
-                }
-            ], { runTransfers: false, learnCategories: false });
-            console.log(`✔️ Posted ${period}`);
-        }
-
+        await processPeriod(cursor, cfg, mortgage, cat, deps.getTransactions, deps.getAccountBalance, deps.addTransactions);
         cursor = addMonths(cursor, 1);
     }
 
     try {
-        await shutdown();
+        await deps.shutdown();
     } catch (err) {
         console.error("Error during shutdown:", err);
     }
@@ -219,3 +260,4 @@ main().catch(err => {
     console.error(err);
     process.exit(1);
 });
+
