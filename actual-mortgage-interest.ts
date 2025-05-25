@@ -11,7 +11,6 @@ import {
     getCategories,
     getTransactions,
     addTransactions,
-    setBudgetAmount,
     shutdown,
     getAccountBalance,
 } from "@actual-app/api";
@@ -62,7 +61,6 @@ interface Dependencies {
     getCategories: () => Promise<Category[]>;
     getTransactions: (accountId: string, startDate: string, endDate: Date) => Promise<Transaction[]>;
     getAccountBalance: (accountId: string, asOfDate: Date) => Promise<number>;
-    setBudgetAmount: (period: string, categoryId: string, amountCents: number) => Promise<void>;
     addTransactions: (accountId: string, transactions: Transaction[], options: { runTransfers: boolean; learnCategories: boolean }) => Promise<void>;
     shutdown: () => Promise<void>;
 }
@@ -191,7 +189,7 @@ export class MortgageInterestService {
             dataDir: process.env.DATA_DIR || ".cache",
         });
         await this.deps.downloadBudget(this.cfg.syncId);  
-        
+
         const accounts = await this.deps.getAccounts();
         this.mortgage = findMortgageAccount(accounts, this.cfg.mortgageAccount);
         const categories = await this.deps.getCategories();
@@ -250,7 +248,6 @@ export async function main() {
         getCategories,
         getTransactions,
         getAccountBalance,
-        setBudgetAmount,
         addTransactions: (accountId, transactions, options) => {
             return addTransactions(accountId, transactions, options).then(() => {});
         },
