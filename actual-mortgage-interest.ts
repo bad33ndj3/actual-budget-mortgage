@@ -15,29 +15,42 @@ import {
     getAccountBalance,
 } from "@actual-app/api";
 
+/** Configuration loaded from environment variables */
 interface Config {
+    /** Actual server URL */
     url: string;
+    /** Password for Actual server */
     password: string;
+    /** Sync ID for budget */
     syncId: string;
+    /** Name of the mortgage account */
     mortgageAccount: string;
+    /** Name of the interest category */
     interestCategory: string;
+    /** Annual interest rate as decimal (e.g. 0.04 for 4%) */
     annualRate: number;
+    /** Day of month to book interest */
     bookingDay: number;
+    /** Whether to run in dry-run mode (no posting) */
     dryRun: boolean;
+    /** Optional start date for processing (YYYY-MM-DD) */
     fromDate?: string;
 }
 
+/** Represents an account in Actual */
 interface Account {
     id: string;
     name: string;
     offbudget: boolean;
 }
 
+/** Represents a category in Actual */
 interface Category {
     id: string;
     name: string;
 }
 
+/** Represents a transaction in Actual */
 interface Transaction {
     imported_id: string;
     date: string;
@@ -49,6 +62,7 @@ interface Transaction {
     notes: string;
 }
 
+/** Booking and balance date information for a period */
 interface BookingDates {
     bookDate: Date;
     asOfDate: Date;
@@ -95,6 +109,7 @@ export function calculateMonthlyInterest(balanceCents: number, annualRate: numbe
     return interestCents;
 }
 
+/** Find the mortgage account by name, warn if on-budget */
 function findMortgageAccount(accounts: Account[], mortgageAccountName: string): Account {
     const mortgage = accounts.find(a => a.name === mortgageAccountName);
     if (!mortgage) throw new Error(`Account '${mortgageAccountName}' not found.`);
@@ -102,12 +117,14 @@ function findMortgageAccount(accounts: Account[], mortgageAccountName: string): 
     return mortgage;
 }
 
+/** Find the interest category by name */
 function findInterestCategory(categories: Category[], interestCategoryName: string): Category {
     const cat = categories.find(c => c.name === interestCategoryName);
     if (!cat) throw new Error(`Category '${interestCategoryName}' not found.`);
     return cat;
 }
 
+/** Determine the start date for processing based on config or today */
 function getCursorStartDate(cfg: Config, today: Date): Date {
     if (cfg.fromDate) {
         const parsed = parseISO(cfg.fromDate);
@@ -120,10 +137,12 @@ function getCursorStartDate(cfg: Config, today: Date): Date {
     }
 }
 
+/** Check if interest transaction with importedId already exists */
 async function hasPostedInterest(transactions: Transaction[], importedId: string): Promise<boolean> {
     return transactions.some(t => t.imported_id === importedId);
 }
 
+/** Calculate booking and as-of dates for a given month cursor */
 function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
     const lastDay = endOfMonth(cursor).getDate();
     const bookingDayAdjusted = Math.min(bookingDay, lastDay);
@@ -136,11 +155,13 @@ function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
     return { bookDate, asOfDate };
 }
 
+/** Log details about the interest booking period */
 function logPeriodDetails(period: string, bookDateStr: string, asOf: string, balanceEuros: number, interestCents: number): void {
     console.log(`→ ${period}: booking date ${bookDateStr}, as of ${asOf}`);
     console.log(`→ ${period}: balance €${balanceEuros.toFixed(2)}, interest €${(interestCents / 100).toFixed(2)}`);
 }
 
+/** Post the interest transaction unless dryRun is true */
 async function postInterestTransaction(
     mortgageId: string,
     interestCents: number,
