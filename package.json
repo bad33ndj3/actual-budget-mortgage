@@ -1,7 +1,8 @@
 {
   "scripts": {
     "run": "ts-node actual-mortgage-interest.ts",
-    "lint": "eslint --ext .ts . --fix"
+    "lint": "eslint --ext .ts . --fix",
+    "test": "node --loader ts-node/esm --test test/*.test.ts"
   },
   "type": "module",
   "devDependencies": {

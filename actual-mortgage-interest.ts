@@ -4,6 +4,7 @@
 
 import "dotenv/config";
 import { format, parseISO, addMonths, isAfter, endOfMonth } from "date-fns";
+import { fileURLToPath } from "url";
 import {
     init,
     downloadBudget,
@@ -143,7 +144,7 @@ async function hasPostedInterest(transactions: Transaction[], importedId: string
 }
 
 /** Calculate booking and as-of dates for a given month cursor */
-function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
+export function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
     const lastDay = endOfMonth(cursor).getDate();
     const bookingDayAdjusted = Math.min(bookingDay, lastDay);
     const bookDate = new Date(cursor.getFullYear(), cursor.getMonth(), bookingDayAdjusted);
@@ -277,8 +278,10 @@ export async function main() {
     await service.run();
 }
 
-main().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    main().catch(err => {
+        console.error(err);
+        process.exit(1);
+    });
+}
 
