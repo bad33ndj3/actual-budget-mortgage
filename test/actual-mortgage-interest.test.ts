@@ -1,5 +1,14 @@
 // actual-mortgage-interest.test.ts
-import { calculateMonthlyInterest, calculateMonthlyInterestDailyMethod, loadConfig, MortgageInterestService } from "./actual-mortgage-interest";
+import { calculateMonthlyInterest, calculateMonthlyInterestDailyMethod, loadConfig, MortgageInterestService } from "../actual-mortgage-interest";
+
+beforeAll(() => {
+    process.env.ACTUAL_URL = "https://actual.spruit.xyz";
+    process.env.ACTUAL_PASSWORD = "secret";
+    process.env.ACTUAL_SYNC_ID = "sync-id";
+    process.env.MORTGAGE_ACCOUNT = "Test Mortgage";
+    process.env.INTEREST_CATEGORY = "Test Mortgage Interest";
+    process.env.BOOKING_DAY = "1";
+});
 
 describe("Mortgage Interest Calculations", () => {
     describe("calculateMonthlyInterest (Compound Method)", () => {
@@ -206,10 +215,10 @@ describe("Configuration Loading", () => {
         const config = loadConfig();
 
         expect(config.url).toBe("https://actual.spruit.xyz");
-        expect(config.annualRate).toBe(0.034);
+        expect(config.annualRate).toBe(0.04);
         expect(config.bookingDay).toBe(1);
-        expect(config.mortgageAccount).toBe("Ijsselmondselaan 220 V2");
-        expect(config.interestCategory).toBe("Ijsselmondselaan 220 V2");
+        expect(config.mortgageAccount).toBe("Test Mortgage");
+        expect(config.interestCategory).toBe("Test Mortgage Interest");
     });
 });
 
@@ -235,10 +244,10 @@ describe("MortgageInterestService Integration", () => {
         service = new MortgageInterestService(mockDeps);
 
         mockDeps.getAccounts.mockResolvedValue([
-            { id: "mortgage-id", name: "Ijsselmondselaan 220 V2", offbudget: true }
+            { id: "mortgage-id", name: "Test Mortgage", offbudget: true }
         ]);
         mockDeps.getCategories.mockResolvedValue([
-            { id: "interest-cat-id", name: "Ijsselmondselaan 220 V2" }
+            { id: "interest-cat-id", name: "Test Mortgage Interest" }
         ]);
         mockDeps.getTransactions.mockResolvedValue([]);
         mockDeps.getAccountBalance.mockResolvedValue(20000000); // €200,000
