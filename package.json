@@ -1,18 +1,24 @@
 {
   "scripts": {
     "run": "ts-node actual-mortgage-interest.ts",
-    "lint": "eslint --ext .ts . --fix"
+    "lint": "eslint --ext .ts . --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "type": "module",
   "devDependencies": {
     "@actual-app/api": "^25.5.0",
+    "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.1",
+    "@typescript-eslint/parser": "^6.7.1",
     "date-fns": "^4.1.0",
     "dotenv": "^16.5.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
     "eslint": "^8.50.0",
-    "@typescript-eslint/parser": "^6.7.1",
-    "@typescript-eslint/eslint-plugin": "^6.7.1"
+    "jest": "^30.0.4",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   },
   "compilerOptions": {
     "sourceMap": true,
@@ -35,8 +41,14 @@
       "plugin:@typescript-eslint/recommended"
     ],
     "rules": {
-      "semi": ["error", "always"],
-      "quotes": ["error", "double"],
+      "semi": [
+        "error",
+        "always"
+      ],
+      "quotes": [
+        "error",
+        "double"
+      ],
       "@typescript-eslint/no-explicit-any": "off"
     }
   }
