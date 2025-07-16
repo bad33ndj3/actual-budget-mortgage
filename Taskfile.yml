@@ -1,9 +1,18 @@
 version: '3'
 
 tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
   lint:
     cmds:
       - npm run lint
+  format:
+    desc: Format source files
+    cmds:
+      - npm run format
   test:
     cmds:
       - npm test

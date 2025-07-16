@@ -103,7 +103,11 @@ This script interacts directly with your Actual Budget data. While it includes a
 
 This repository provides a `Taskfile.yml` with a few convenience commands powered by [Taskfile](https://taskfile.dev/):
 
-- `task lint` – run ESLint with auto-fix
-- `task test` – execute the Jest test suite
-- `task run`  – run the mortgage interest script
+- `task`        – list all available commands
+- `task lint`   – run ESLint with auto-fix
+- `task format` – run Prettier to format the codebase
+- `task test`   – execute the Jest test suite
+- `task run`    – run the mortgage interest script
+
+ESLint uses [`eslint-config-prettier`](https://github.com/prettier/eslint-config-prettier) to disable rules that conflict with Prettier's formatting.
 
