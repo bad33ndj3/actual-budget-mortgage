@@ -7,8 +7,7 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   testMatch: [
-    '**/__tests__/**/*.ts',
-    '**/?(*.)+(spec|test).ts'
+    '**/test/**/*.ts'
   ],
   collectCoverageFrom: [
     '**/*.ts',

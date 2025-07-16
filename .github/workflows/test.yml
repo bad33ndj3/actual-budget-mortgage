@@ -1,0 +1,26 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      ACTUAL_URL: https://actual.spruit.xyz
+      ACTUAL_PASSWORD: secret
+      ACTUAL_SYNC_ID: sync-id
+      MORTGAGE_ACCOUNT: Test Mortgage
+      INTEREST_CATEGORY: Test Mortgage Interest
+      BOOKING_DAY: '1'
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm install
+      - run: npm test
