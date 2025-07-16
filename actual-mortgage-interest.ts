@@ -100,7 +100,7 @@ export function loadConfig(): Config {
     };
 }
 
-export function calculateMonthlyInterest(balanceCents: number, annualRate: number, monthDate?: Date): number {
+export function calculateMonthlyInterest(balanceCents: number, annualRate: number): number {
     // Calculate monthly interest using compound interest formula
     // This is more accurate for mortgage calculations
     const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
