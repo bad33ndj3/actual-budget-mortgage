@@ -2,7 +2,7 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -14,13 +14,13 @@ jobs:
       ACTUAL_SYNC_ID: sync-id
       MORTGAGE_ACCOUNT: Test Mortgage
       INTEREST_CATEGORY: Test Mortgage Interest
-      BOOKING_DAY: '1'
+      BOOKING_DAY: "1"
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
       - run: npm install
       - run: npm test
