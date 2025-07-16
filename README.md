@@ -99,3 +99,11 @@ This script interacts directly with your Actual Budget data. While it includes a
 -   Test thoroughly with `DRY_RUN=true`.
 -   Review the transactions and budget amounts created by the script.
 
+## Development
+
+This repository provides a `Taskfile.yml` with a few convenience commands powered by [Taskfile](https://taskfile.dev/):
+
+- `task lint` – run ESLint with auto-fix
+- `task test` – execute the Jest test suite
+- `task run`  – run the mortgage interest script
+
