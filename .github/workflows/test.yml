@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      ACTUAL_URL: https://actual.spruit.xyz
+      ACTUAL_URL: https://example.com
       ACTUAL_PASSWORD: secret
       ACTUAL_SYNC_ID: sync-id
       MORTGAGE_ACCOUNT: Test Mortgage
