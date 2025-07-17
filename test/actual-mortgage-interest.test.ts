@@ -253,13 +253,24 @@ describe("Mortgage Interest Calculations", () => {
 
 describe("Configuration Loading", () => {
   it("should load config from environment variables", () => {
-    const config = loadConfig();
+    const result = loadConfig();
+    expect(result.error).toBeUndefined();
+    const config = result.value!;
 
     expect(config.url).toBe("https://actual.spruit.xyz");
     expect(config.annualRate).toBe(0.04);
     expect(config.bookingDay).toBe(1);
     expect(config.mortgageAccount).toBe("Test Mortgage");
     expect(config.interestCategory).toBe("Test Mortgage Interest");
+  });
+
+  it("should return error when required env vars are missing", () => {
+    const original = process.env.ACTUAL_PASSWORD;
+    delete process.env.ACTUAL_PASSWORD;
+    const result = loadConfig();
+    expect(result.error).toBeInstanceOf(Error);
+    expect(result.error?.message).toMatch(/ACTUAL_PASSWORD/);
+    process.env.ACTUAL_PASSWORD = original;
   });
 });
 
@@ -295,7 +306,8 @@ describe("MortgageInterestService Integration", () => {
   });
 
   it("should initialize properly", async () => {
-    await service.initialize();
+    const res = await service.initialize();
+    expect(res.error).toBeUndefined();
 
     expect(mockDeps.init).toHaveBeenCalled();
     expect(mockDeps.downloadBudget).toHaveBeenCalled();
@@ -304,7 +316,8 @@ describe("MortgageInterestService Integration", () => {
   });
 
   it("should calculate correct interest with improved method", async () => {
-    await service.initialize();
+    const res = await service.initialize();
+    expect(res.error).toBeUndefined();
 
     const balance = 20000000; // €200,000
     const expectedInterest = calculateMonthlyInterest(balance, 0.034);

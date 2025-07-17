@@ -4,6 +4,7 @@
 
 import "dotenv/config";
 import { format, parseISO, addMonths, isAfter, endOfMonth } from "date-fns";
+import { Result } from "./result";
 import {
   init,
   downloadBudget,
@@ -93,15 +94,14 @@ interface ActualClient {
   shutdown: () => Promise<void>;
 }
 
-export function loadConfig(): Config {
+export function loadConfig(): Result<Config> {
   const required = ["ACTUAL_URL", "ACTUAL_PASSWORD", "ACTUAL_SYNC_ID"] as const;
   for (const k of required) {
     if (!process.env[k]) {
-      console.error(`Missing env var ${k}`);
-      process.exit(1);
+      return { error: new Error(`Missing env var ${k}`) };
     }
   }
-  return {
+  const value: Config = {
     url: process.env.ACTUAL_URL!,
     password: process.env.ACTUAL_PASSWORD!,
     syncId: process.env.ACTUAL_SYNC_ID!,
@@ -112,6 +112,7 @@ export function loadConfig(): Config {
     dryRun: process.env.DRY_RUN === "true",
     fromDate: process.env.FROM_DATE, // e.g. "2024-01-01"
   };
+  return { value };
 }
 
 export function calculateMonthlyInterest(
@@ -145,24 +146,26 @@ export function calculateMonthlyInterestDailyMethod(
 function findMortgageAccount(
   accounts: Account[],
   mortgageAccountName: string,
-): Account {
+): Result<Account> {
   const mortgage = accounts.find((a) => a.name === mortgageAccountName);
-  if (!mortgage) throw new Error(`Account '${mortgageAccountName}' not found.`);
+  if (!mortgage)
+    return { error: new Error(`Account '${mortgageAccountName}' not found.`) };
   if (!mortgage.offbudget)
     console.warn(
       "⚠️ Mortgage account is on-budget; consider marking it off-budget.",
     );
-  return mortgage;
+  return { value: mortgage };
 }
 
 /** Find the interest category by name */
 function findInterestCategory(
   categories: Category[],
   interestCategoryName: string,
-): Category {
+): Result<Category> {
   const cat = categories.find((c) => c.name === interestCategoryName);
-  if (!cat) throw new Error(`Category '${interestCategoryName}' not found.`);
-  return cat;
+  if (!cat)
+    return { error: new Error(`Category '${interestCategoryName}' not found.`) };
+  return { value: cat };
 }
 
 /** Determine the start date for processing based on config or today */
@@ -187,7 +190,10 @@ async function hasPostedInterest(
 }
 
 /** Calculate booking and as-of dates for a given month cursor */
-function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
+function calculateBookingDates(
+  cursor: Date,
+  bookingDay: number,
+): Result<BookingDates> {
   const lastDay = endOfMonth(cursor).getDate();
   const bookingDayAdjusted = Math.min(bookingDay, lastDay);
   const bookDate = new Date(
@@ -198,11 +204,13 @@ function calculateBookingDates(cursor: Date, bookingDay: number): BookingDates {
   const asOfDate = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   asOfDate.setDate(asOfDate.getDate() - 1);
   if (isNaN(bookDate.getTime()) || isNaN(asOfDate.getTime())) {
-    throw new Error(
-      `Invalid booking or asOf date for period ${format(cursor, "yyyy-MM")}`,
-    );
+    return {
+      error: new Error(
+        `Invalid booking or asOf date for period ${format(cursor, "yyyy-MM")}`,
+      ),
+    };
   }
-  return { bookDate, asOfDate };
+  return { value: { bookDate, asOfDate } };
 }
 
 /** Log details about the interest booking period */
@@ -262,11 +270,15 @@ export class MortgageInterestService {
   private category!: Category;
 
   constructor(client: ActualClient) {
-    this.config = loadConfig();
+    const cfg = loadConfig();
+    if (cfg.error || !cfg.value) {
+      throw cfg.error;
+    }
+    this.config = cfg.value;
     this.client = client;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(): Promise<Result<void>> {
     console.log("Connecting to Actual server …");
     await this.client.init({
       serverURL: this.config.url,
@@ -276,12 +288,25 @@ export class MortgageInterestService {
     await this.client.downloadBudget(this.config.syncId);
 
     const accounts = await this.client.getAccounts();
-    this.mortgage = findMortgageAccount(accounts, this.config.mortgageAccount);
+    const mortgageResult = findMortgageAccount(
+      accounts,
+      this.config.mortgageAccount,
+    );
+    if (mortgageResult.error) return { error: mortgageResult.error };
+    this.mortgage = mortgageResult.value!;
+
     const categories = await this.client.getCategories();
-    this.category = findInterestCategory(categories, this.config.interestCategory);
+    const catResult = findInterestCategory(
+      categories,
+      this.config.interestCategory,
+    );
+    if (catResult.error) return { error: catResult.error };
+    this.category = catResult.value!;
+
+    return { value: undefined };
   }
 
-  private async processPeriod(cursor: Date): Promise<void> {
+  private async processPeriod(cursor: Date): Promise<Result<void>> {
     const period = format(cursor, "yyyy-MM");
     const importedId = `interest-${period}`;
     const existing = await this.client.getTransactions(
@@ -291,13 +316,15 @@ export class MortgageInterestService {
     );
     if (await hasPostedInterest(existing, importedId)) {
       console.log(`→ ${period}: already posted, skipping.`);
-      return;
+      return { value: undefined };
     }
 
-    const { bookDate, asOfDate } = calculateBookingDates(
+    const datesRes = calculateBookingDates(
       cursor,
       this.config.bookingDay,
     );
+    if (datesRes.error) return { error: datesRes.error };
+    const { bookDate, asOfDate } = datesRes.value!;
     const asOf = format(asOfDate, "yyyy-MM-dd");
     const bookDateStr = format(bookDate, "yyyy-MM-dd");
 
@@ -324,17 +351,26 @@ export class MortgageInterestService {
       this.config.dryRun,
       this.client.addTransactions,
     );
+    return { value: undefined };
   }
 
   async run(): Promise<void> {
-    await this.initialize();
+    const initRes = await this.initialize();
+    if (initRes.error) {
+      console.error(initRes.error);
+      return;
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     let cursor = getCursorStartDate(this.config, today);
 
     while (!isAfter(cursor, today)) {
-      await this.processPeriod(cursor);
+      const res = await this.processPeriod(cursor);
+      if (res.error) {
+        console.error(res.error);
+        return;
+      }
       cursor = addMonths(cursor, 1);
     }
 
