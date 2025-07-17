@@ -16,6 +16,8 @@ import {
 } from "@actual-app/api";
 
 /** Configuration loaded from environment variables */
+type Cents = number;
+
 interface Config {
   /** Actual server URL */
   url: string;
@@ -68,7 +70,7 @@ interface BookingDates {
   asOfDate: Date;
 }
 
-interface Dependencies {
+interface ActualClient {
   init: (opts: {
     serverURL: string;
     password: string;
@@ -113,9 +115,9 @@ export function loadConfig(): Config {
 }
 
 export function calculateMonthlyInterest(
-  balanceCents: number,
+  balanceCents: Cents,
   annualRate: number,
-): number {
+): Cents {
   // Calculate monthly interest using compound interest formula
   // This is more accurate for mortgage calculations
   const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
@@ -124,10 +126,10 @@ export function calculateMonthlyInterest(
 }
 
 export function calculateMonthlyInterestDailyMethod(
-  balanceCents: number,
+  balanceCents: Cents,
   annualRate: number,
   monthDate: Date,
-): number {
+): Cents {
   // Alternative method using actual days in month
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -209,7 +211,7 @@ function logPeriodDetails(
   bookDateStr: string,
   asOf: string,
   balanceEuros: number,
-  interestCents: number,
+  interestCents: Cents,
 ): void {
   console.log(`→ ${period}: booking date ${bookDateStr}, as of ${asOf}`);
   console.log(
@@ -220,13 +222,13 @@ function logPeriodDetails(
 /** Post the interest transaction unless dryRun is true */
 async function postInterestTransaction(
   mortgageId: string,
-  interestCents: number,
+  interestCents: Cents,
   catId: string,
   importedId: string,
   bookDate: Date,
   period: string,
   dryRun: boolean,
-  addTransactions: Dependencies["addTransactions"],
+  addTransactions: ActualClient["addTransactions"],
 ): Promise<void> {
   if (dryRun) {
     console.log(
@@ -254,35 +256,35 @@ async function postInterestTransaction(
 }
 
 export class MortgageInterestService {
-  private cfg: Config;
-  private deps: Dependencies;
+  private config: Config;
+  private client: ActualClient;
   private mortgage!: Account;
   private category!: Category;
 
-  constructor(deps: Dependencies) {
-    this.cfg = loadConfig();
-    this.deps = deps;
+  constructor(client: ActualClient) {
+    this.config = loadConfig();
+    this.client = client;
   }
 
   async initialize(): Promise<void> {
     console.log("Connecting to Actual server …");
-    await this.deps.init({
-      serverURL: this.cfg.url,
-      password: this.cfg.password,
+    await this.client.init({
+      serverURL: this.config.url,
+      password: this.config.password,
       dataDir: process.env.DATA_DIR || ".cache",
     });
-    await this.deps.downloadBudget(this.cfg.syncId);
+    await this.client.downloadBudget(this.config.syncId);
 
-    const accounts = await this.deps.getAccounts();
-    this.mortgage = findMortgageAccount(accounts, this.cfg.mortgageAccount);
-    const categories = await this.deps.getCategories();
-    this.category = findInterestCategory(categories, this.cfg.interestCategory);
+    const accounts = await this.client.getAccounts();
+    this.mortgage = findMortgageAccount(accounts, this.config.mortgageAccount);
+    const categories = await this.client.getCategories();
+    this.category = findInterestCategory(categories, this.config.interestCategory);
   }
 
   private async processPeriod(cursor: Date): Promise<void> {
     const period = format(cursor, "yyyy-MM");
     const importedId = `interest-${period}`;
-    const existing = await this.deps.getTransactions(
+    const existing = await this.client.getTransactions(
       this.mortgage.id,
       format(cursor, "yyyy-MM-01"),
       new Date(),
@@ -294,21 +296,21 @@ export class MortgageInterestService {
 
     const { bookDate, asOfDate } = calculateBookingDates(
       cursor,
-      this.cfg.bookingDay,
+      this.config.bookingDay,
     );
     const asOf = format(asOfDate, "yyyy-MM-dd");
     const bookDateStr = format(bookDate, "yyyy-MM-dd");
 
-    const balanceCents = await this.deps.getAccountBalance(
+    const balanceCents = await this.client.getAccountBalance(
       this.mortgage.id,
       asOfDate,
     );
     const interestCents = calculateMonthlyInterest(
       balanceCents,
-      this.cfg.annualRate,
+      this.config.annualRate,
     );
     const balanceEuros = balanceCents / 100;
-    // const monthlyRate = Math.pow(1 + this.cfg.annualRate, 1 / 12) - 1;
+    // const monthlyRate = Math.pow(1 + this.config.annualRate, 1 / 12) - 1;
 
     logPeriodDetails(period, bookDateStr, asOf, balanceEuros, interestCents);
 
@@ -319,8 +321,8 @@ export class MortgageInterestService {
       importedId,
       bookDate,
       period,
-      this.cfg.dryRun,
-      this.deps.addTransactions,
+      this.config.dryRun,
+      this.client.addTransactions,
     );
   }
 
@@ -329,7 +331,7 @@ export class MortgageInterestService {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    let cursor = getCursorStartDate(this.cfg, today);
+    let cursor = getCursorStartDate(this.config, today);
 
     while (!isAfter(cursor, today)) {
       await this.processPeriod(cursor);
@@ -337,7 +339,7 @@ export class MortgageInterestService {
     }
 
     try {
-      await this.deps.shutdown();
+      await this.client.shutdown();
     } catch (err) {
       console.error("Error during shutdown:", err);
     }
