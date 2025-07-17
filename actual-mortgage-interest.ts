@@ -4,7 +4,11 @@
 
 import "dotenv/config";
 import { format, parseISO, addMonths, isAfter, endOfMonth } from "date-fns";
-import { Result } from "./result";
+/** Generic result type used for functions that may fail */
+export interface Result<T> {
+  value?: T;
+  error?: Error;
+}
 import {
   init,
   downloadBudget,
