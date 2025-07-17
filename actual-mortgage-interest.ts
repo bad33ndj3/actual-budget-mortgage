@@ -307,7 +307,7 @@ export class MortgageInterestService {
     if (catResult.error) return { error: catResult.error };
     this.category = catResult.value!;
 
-    return { value: undefined };
+    return { value: null };
   }
 
   private async processPeriod(cursor: Date): Promise<Result<void>> {
