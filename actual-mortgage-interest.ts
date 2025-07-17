@@ -186,10 +186,10 @@ function getCursorStartDate(cfg: Config, today: Date): Date {
 }
 
 /** Check if interest transaction with importedId already exists */
-async function hasPostedInterest(
+function hasPostedInterest(
   transactions: Transaction[],
   importedId: string,
-): Promise<boolean> {
+): boolean {
   return transactions.some((t) => t.imported_id === importedId);
 }
 
@@ -318,7 +318,7 @@ export class MortgageInterestService {
       format(cursor, "yyyy-MM-01"),
       new Date(),
     );
-    if (await hasPostedInterest(existing, importedId)) {
+    if (hasPostedInterest(existing, importedId)) {
       console.log(`→ ${period}: already posted, skipping.`);
       return { value: undefined };
     }
