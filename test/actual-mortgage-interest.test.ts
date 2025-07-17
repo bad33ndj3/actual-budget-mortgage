@@ -263,7 +263,7 @@ describe("Configuration Loading", () => {
   });
 });
 
-function createMockDependencies() {
+function createMockClient() {
   return {
     init: jest.fn(),
     downloadBudget: jest.fn(),
@@ -277,11 +277,11 @@ function createMockDependencies() {
 }
 
 describe("MortgageInterestService Integration", () => {
-  let mockDeps: ReturnType<typeof createMockDependencies>;
+  let mockDeps: ReturnType<typeof createMockClient>;
   let service: MortgageInterestService;
 
   beforeEach(() => {
-    mockDeps = createMockDependencies();
+    mockDeps = createMockClient();
     service = new MortgageInterestService(mockDeps);
 
     mockDeps.getAccounts.mockResolvedValue([
