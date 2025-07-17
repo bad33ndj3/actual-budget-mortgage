@@ -253,7 +253,9 @@ describe("Mortgage Interest Calculations", () => {
 
 describe("Configuration Loading", () => {
   it("should load config from environment variables", () => {
-    const config = loadConfig();
+    const result = loadConfig();
+    expect(result.error).toBeUndefined();
+    const config = result.value!;
 
     expect(config.url).toBe("https://actual.spruit.xyz");
     expect(config.annualRate).toBe(0.04);
@@ -261,6 +263,18 @@ describe("Configuration Loading", () => {
     expect(config.mortgageAccount).toBe("Test Mortgage");
     expect(config.interestCategory).toBe("Test Mortgage Interest");
   });
+
+  it.each(["ACTUAL_URL", "ACTUAL_PASSWORD", "ACTUAL_SYNC_ID"]) (
+    "should return error when %s is missing",
+    (varName) => {
+      const original = process.env[varName];
+      delete process.env[varName];
+      const result = loadConfig();
+      expect(result.error).toBeInstanceOf(Error);
+      expect(result.error?.message).toMatch(new RegExp(varName));
+      process.env[varName] = original;
+    },
+  );
 });
 
 function createMockClient() {
@@ -295,7 +309,8 @@ describe("MortgageInterestService Integration", () => {
   });
 
   it("should initialize properly", async () => {
-    await service.initialize();
+    const res = await service.initialize();
+    expect(res.error).toBeUndefined();
 
     expect(mockDeps.init).toHaveBeenCalled();
     expect(mockDeps.downloadBudget).toHaveBeenCalled();
@@ -304,7 +319,8 @@ describe("MortgageInterestService Integration", () => {
   });
 
   it("should calculate correct interest with improved method", async () => {
-    await service.initialize();
+    const res = await service.initialize();
+    expect(res.error).toBeUndefined();
 
     const balance = 20000000; // €200,000
     const expectedInterest = calculateMonthlyInterest(balance, 0.034);
