@@ -275,7 +275,7 @@ export class MortgageInterestService {
 
   constructor(client: ActualClient) {
     const cfg = loadConfig();
-    if (cfg.error || !cfg.value) {
+    if (cfg.error) {
       throw cfg.error;
     }
     this.config = cfg.value;
