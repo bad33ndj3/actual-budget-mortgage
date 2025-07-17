@@ -7,7 +7,7 @@ import {
 } from "../actual-mortgage-interest";
 
 beforeAll(() => {
-  process.env.ACTUAL_URL = "https://actual.spruit.xyz";
+  process.env.ACTUAL_URL = "https://example.com";
   process.env.ACTUAL_PASSWORD = "secret";
   process.env.ACTUAL_SYNC_ID = "sync-id";
   process.env.MORTGAGE_ACCOUNT = "Test Mortgage";
