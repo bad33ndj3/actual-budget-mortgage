@@ -320,7 +320,7 @@ export class MortgageInterestService {
     );
     if (await hasPostedInterest(existing, importedId)) {
       console.log(`→ ${period}: already posted, skipping.`);
-      return { value: undefined };
+      return { value: null };
     }
 
     const datesRes = calculateBookingDates(
