@@ -355,7 +355,7 @@ export class MortgageInterestService {
       this.config.dryRun,
       this.client.addTransactions,
     );
-    return { value: undefined };
+    return { value: null };
   }
 
   async run(): Promise<void> {
