@@ -257,7 +257,7 @@ describe("Configuration Loading", () => {
     expect(result.error).toBeUndefined();
     const config = result.value!;
 
-    expect(config.url).toBe("https://actual.spruit.xyz");
+    expect(config.url).toBe("https://example.com");
     expect(config.annualRate).toBe(0.04);
     expect(config.bookingDay).toBe(1);
     expect(config.mortgageAccount).toBe("Test Mortgage");
